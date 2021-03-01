@@ -95,7 +95,7 @@ namespace de4dot.code.deobfuscators.Dotfuscator {
 					while (j < instrs.Count - 1 && !instrs[j].IsStloc()) {
 						var ldcOp = instrs[j];
 						var addOp = instrs[j + 1];
-						if (ldcOp.IsLdcI4() && addOp.OpCode == OpCodes.Add) {
+						if (ldcOp.IsLdcI4() && (addOp.OpCode == OpCodes.Add || addOp.OpCode == OpCodes.Conv_I)) {
 							magicAdd = magicAdd + ldcOp.GetLdcI4Value();
 							j = j + 2;
 						}
@@ -114,10 +114,10 @@ namespace de4dot.code.deobfuscators.Dotfuscator {
 		public string Decrypt(IMethod method, string encrypted, int value) {
 			var info = stringDecrypterMethods.FindAny(method);
 			char[] chars = encrypted.ToCharArray();
-			byte key = (byte)(info.magic + value);
+			var key = info.magic + value;
 			for (int i = 0; i < chars.Length; i++) {
 				char c = chars[i];
-				byte b1 = (byte)((byte)c ^ key++);
+				byte b1 = (byte)((byte)c & 0xFFu ^ key++);
 				byte b2 = (byte)((byte)(c >> 8) ^ key++);
 				chars[i] = (char)((b1 << 8) | b2);
 			}
