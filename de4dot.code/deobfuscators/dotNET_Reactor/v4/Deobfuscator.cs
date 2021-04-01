@@ -129,15 +129,6 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 		public override string Name => obfuscatorName;
 		protected override bool CanInlineMethods => startedDeobfuscating ? options.InlineMethods : true;
 
-		public override IEnumerable<IBlocksDeobfuscator> BlocksDeobfuscators {
-			get {
-				var list = new List<IBlocksDeobfuscator>();
-				if (CanInlineMethods)
-					list.Add(new DnrMethodCallInliner());
-				return list;
-			}
-		}
-
 		public Deobfuscator(Options options)
 			: base(options) {
 			this.options = options;
@@ -218,6 +209,8 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 		protected override void ScanForObfuscator() {
 			methodsDecrypter = new MethodsDecrypter(module);
 			methodsDecrypter.Find();
+			proxyCallFixer = new ProxyCallFixer(module, DeobfuscatedFile);
+			proxyCallFixer.FindDelegateCreator(module);
 			stringDecrypter = new StringDecrypter(module);
 			stringDecrypter.Find(DeobfuscatedFile);
 			booleanDecrypter = new BooleanDecrypter(module);
@@ -425,6 +418,7 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			newOne.fileData = fileData;
 			newOne.peImage = new MyPEImage(fileData);
 			newOne.methodsDecrypter = new MethodsDecrypter(module, methodsDecrypter);
+			newOne.proxyCallFixer = new ProxyCallFixer(module, proxyCallFixer);
 			newOne.stringDecrypter = new StringDecrypter(module, stringDecrypter);
 			newOne.booleanDecrypter = new BooleanDecrypter(module, booleanDecrypter);
 			newOne.assemblyResolver = new AssemblyResolver(module, assemblyResolver);
@@ -439,16 +433,74 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			peImage = null;
 		}
 
+		void RemoveMethods() {
+			if (methodsDecrypter.Method != null) {
+				AddEntryPointCallToBeRemoved(methodsDecrypter.Method);
+			}
+
+			MethodDef antiTamper = null;
+			MethodDef antiDebug = null;
+
+			foreach (var type in module.GetTypes()) {
+				foreach (var method in type.Methods) {
+					if (!method.HasBody) continue;
+
+					foreach (var str in DotNetUtils.GetCodeStrings(method)) {
+						if (str == " is tampered.") {
+							antiTamper = method;
+							AddMethodToBeRemoved(antiTamper, "Anti tamper method");
+							break;
+						}
+
+						if (str == "Debugger Detected") {
+							antiDebug = method;
+							AddMethodToBeRemoved(antiDebug, "Anti debug method");
+							break;
+						}
+					}
+				}
+			}
+
+			foreach (var type in module.GetTypes()) {
+				foreach (var method in type.Methods) {
+					if (!method.HasBody) continue;
+					if (emptyClass?.Method != null)
+						AddCallToBeRemoved(method, emptyClass.Method);
+
+					if (antiTamper != null)
+						AddCallToBeRemoved(method, antiTamper);
+
+					if (antiDebug != null)
+						AddCallToBeRemoved(method, antiDebug);
+
+					if (methodsDecrypter.Method != null)
+						AddCallToBeRemoved(method, methodsDecrypter.Method);
+
+					// AntiILDASM
+					var instr = method.Body.Instructions;
+
+					for (int i = 0; i < instr.Count; i++) {
+						if (instr[i].OpCode == OpCodes.Call && instr[i].Operand is null && instr[i + 1].IsStloc() && instr[i + 2].IsLdloc()) {
+							instr[i].OpCode = OpCodes.Nop; // v6.0.0.0
+							instr[i + 2].OpCode = OpCodes.Nop;
+						}
+						if (instr[i].OpCode == OpCodes.Call && instr[i].Operand is null) {
+							instr[i].OpCode = OpCodes.Nop;
+						}
+					}
+				}
+			}
+		}
+
 		public override void DeobfuscateBegin() {
 			base.DeobfuscateBegin();
 
-			proxyCallFixer = new ProxyCallFixer(module, DeobfuscatedFile);
-			proxyCallFixer.FindDelegateCreator();
+			proxyCallFixer.Initialize();
 			proxyCallFixer.Find();
 
 			bool decryptStrings = Operations.DecryptStrings == OpDecryptString.Static;
 			if (decryptStrings)
-				stringDecrypter.Initialize(peImage, fileData, DeobfuscatedFile);
+				stringDecrypter.Initialize(peImage, fileData, DeobfuscatedFile, ref decryptStrings);
 			if (!stringDecrypter.Detected || !decryptStrings)
 				FreePEImage();
 			booleanDecrypter.Initialize(fileData, DeobfuscatedFile);
@@ -492,10 +544,10 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			if (resourceResolver.Detected && !removeResourceResolver && !resourceResolver.FoundResource)
 				canRemoveDecrypterType = false;	// There may be calls to its .ctor
 
-			if (Operations.DecryptStrings != OpDecryptString.None)
-				AddResourceToBeRemoved(stringDecrypter.Resource, "Encrypted strings");
-			else
-				canRemoveDecrypterType = false;
+			//if (Operations.DecryptStrings != OpDecryptString.None)
+			//	AddResourceToBeRemoved(stringDecrypter.Resource, "Encrypted strings");
+			//else
+			//	canRemoveDecrypterType = false;
 
 			if (options.DecryptMethods && !methodsDecrypter.HasNativeMethods) {
 				AddResourceToBeRemoved(methodsDecrypter.Resource, "Encrypted methods");
@@ -533,6 +585,8 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			if (options.InlineMethods)
 				AddTypeToBeRemoved(emptyClass.Type, "Empty class");
 
+			RemoveMethods();
+
 			startedDeobfuscating = true;
 		}
 
@@ -562,8 +616,11 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 
 		public override bool DeobfuscateOther(Blocks blocks) => booleanValueInliner.Decrypt(blocks) > 0;
 
-		public override void DeobfuscateMethodEnd(Blocks blocks) {
+		public override void DeobfuscateMethodBegin(Blocks blocks) {
 			proxyCallFixer.Deobfuscate(blocks);
+		}
+
+		public override void DeobfuscateMethodEnd(Blocks blocks) {
 			metadataTokenObfuscator.Deobfuscate(blocks);
 			FixTypeofDecrypterInstructions(blocks);
 			RemoveAntiStrongNameCode(blocks);
@@ -599,7 +656,7 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 
 		public override void DeobfuscateEnd() {
 			FreePEImage();
-			RemoveProxyDelegates(proxyCallFixer);
+			RemoveProxyDelegates(proxyCallFixer, false);
 			RemoveInlinedMethods();
 			if (options.RestoreTypes)
 				new TypesRestorer(module).Deobfuscate();

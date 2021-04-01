@@ -169,10 +169,10 @@ namespace de4dot.cui {
 				filesOptions.AssemblyClientFactory = new NewProcessAssemblyClientFactory();
 			}));
 			miscOptions.Add(new NoArgOption(null, "keep-types", "Keep obfuscator types, fields, methods", () => {
-				filesOptions.KeepObfuscatorTypes = true;
+				newFileOptions.KeepObfuscatorTypes = true;
 			}));
 			miscOptions.Add(new NoArgOption(null, "preserve-tokens", "Preserve important tokens, #US, #Blob, extra sig data", () => {
-				filesOptions.MetadataFlags |= MetadataFlags.PreserveRids |
+				newFileOptions.MetadataFlags |= MetadataFlags.PreserveRids |
 						MetadataFlags.PreserveUSOffsets |
 						MetadataFlags.PreserveBlobOffsets |
 						MetadataFlags.PreserveExtraSignatureData;
@@ -208,17 +208,20 @@ namespace de4dot.cui {
 						filesOptions.MetadataFlags |= flag;
 				}
 			}));
+			miscOptions.Add(new NoArgOption(null, "preserve-all", "Preserve all tokens", () => {
+				newFileOptions.MetadataFlags |= MetadataFlags.PreserveAll;
+			}));
 			miscOptions.Add(new NoArgOption(null, "preserve-strings", "Preserve #Strings heap offsets", () => {
-				filesOptions.MetadataFlags |= MetadataFlags.PreserveStringsOffsets;
+				newFileOptions.MetadataFlags |= MetadataFlags.PreserveStringsOffsets;
 			}));
 			miscOptions.Add(new NoArgOption(null, "preserve-us", "Preserve #US heap offsets", () => {
-				filesOptions.MetadataFlags |= MetadataFlags.PreserveUSOffsets;
+				newFileOptions.MetadataFlags |= MetadataFlags.PreserveUSOffsets;
 			}));
 			miscOptions.Add(new NoArgOption(null, "preserve-blob", "Preserve #Blob heap offsets", () => {
-				filesOptions.MetadataFlags |= MetadataFlags.PreserveBlobOffsets;
+				newFileOptions.MetadataFlags |= MetadataFlags.PreserveBlobOffsets;
 			}));
 			miscOptions.Add(new NoArgOption(null, "preserve-sig-data", "Preserve extra data at the end of signatures", () => {
-				filesOptions.MetadataFlags |= MetadataFlags.PreserveExtraSignatureData;
+				newFileOptions.MetadataFlags |= MetadataFlags.PreserveExtraSignatureData;
 			}));
 			miscOptions.Add(new NoArgOption(null, "one-file", "Deobfuscate one file at a time", () => {
 				filesOptions.OneFileAtATime = true;

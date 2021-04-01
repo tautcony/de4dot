@@ -82,6 +82,12 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 				"System.IO.Stream",
 			};
 
+			var resolverLocals3 = new string[] {
+				"System.Reflection.Assembly",
+				"System.Reflection.Assembly[]",
+				"System.IO.Stream",
+			};
+
 			simpleDeobfuscator.Deobfuscate(methodToCheck);
 			foreach (var method in DotNetUtils.GetCalledMethods(module, methodToCheck)) {
 				var type = method.DeclaringType;
@@ -104,7 +110,7 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 					continue;
 
 				var localTypes = new LocalTypes(resolverMethod);
-				if (!localTypes.All(resolverLocals) && !localTypes.All(resolverLocals2))
+				if (!localTypes.All(resolverLocals) && !localTypes.All(resolverLocals2) && !localTypes.All(resolverLocals3))
 					continue;
 
 				assemblyResolverType = type;
@@ -123,10 +129,11 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			var fieldTypes = new FieldTypes(fields);
 			if (fieldTypes.Count("System.Boolean") != 1)
 				return false;
+			if (fields.Count == 3)
+				return fieldTypes.Count("System.Collections.Hashtable") == 2 || fieldTypes.Count("System.Object") == 2;
 			if (fields.Count == 2)
-				return fieldTypes.Count("System.Collections.Hashtable") == 1 ||
-				fieldTypes.Count("System.Object") == 1;
-			return fieldTypes.Count("System.Object") == 2;
+				return fieldTypes.Count("System.Collections.Hashtable") == 1 || fieldTypes.Count("System.Object") == 1;
+			return false;
 		}
 
 		static MethodDef FindAssemblyResolveMethod(TypeDef type) {

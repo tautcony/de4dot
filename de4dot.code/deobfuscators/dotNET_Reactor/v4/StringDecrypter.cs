@@ -137,17 +137,23 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			}
 		}
 
-		public void Initialize(MyPEImage peImage, byte[] fileData, ISimpleDeobfuscator simpleDeobfuscator) {
+		public void Initialize(MyPEImage peImage, byte[] fileData, ISimpleDeobfuscator simpleDeobfuscator, ref bool decryptStrings) {
 			if (encryptedResource.Method == null)
 				return;
 			this.peImage = peImage;
 			this.fileData = fileData;
-
-			encryptedResource.Initialize(simpleDeobfuscator);
+			try {
+				encryptedResource.Initialize(simpleDeobfuscator);
+		
 			if (!encryptedResource.FoundResource)
 				return;
 			Logger.v("Adding string decrypter. Resource: {0}", Utils.ToCsharpString(encryptedResource.Resource.Name));
 			decryptedData = encryptedResource.Decrypt();
+			}
+			catch {
+				encryptedResource.Method = null;
+				decryptStrings = false;
+			}
 		}
 
 		void FindKeyIv(MethodDef method, out byte[] key, out byte[] iv) {
@@ -158,7 +164,6 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 				"System.Byte[]",
 				"System.IO.MemoryStream",
 				"System.Security.Cryptography.CryptoStream",
-				"System.Security.Cryptography.Rijndael",
 			};
 			foreach (var calledMethod in DotNetUtils.GetCalledMethods(module, method)) {
 				if (calledMethod.DeclaringType != method.DeclaringType)

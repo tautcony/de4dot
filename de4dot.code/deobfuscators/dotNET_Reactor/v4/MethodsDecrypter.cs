@@ -149,20 +149,17 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 				PatchDwords(peImage, ref methodsDataReader, patchCount);
 				bool oldCode = !IsNewer45Decryption(encryptedResource.Method);
 				while (methodsDataReader.Position < methodsData.Length - 1) {
-					uint rva = methodsDataReader.ReadUInt32();
+					uint rva = (uint) methodsDataReader.ReadInt32();
 					int size;
 					if (oldCode) {
-						methodsDataReader.ReadUInt32();	// token, unknown, or index
+						methodsDataReader.ReadInt32();	// token, unknown, or index
 						size = methodsDataReader.ReadInt32();
 					}
 					else
 						size = methodsDataReader.ReadInt32() * 4;
 
 					var newData = methodsDataReader.ReadBytes(size);
-					if (unpackedNativeFile)
-						peImage.DotNetSafeWriteOffset(rva, newData);
-					else
-						peImage.DotNetSafeWrite(rva, newData);
+					peImage.DotNetSafeWrite(rva, newData);
 				}
 			}
 			else {
@@ -263,8 +260,6 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 					continue;
 				var call = instrs[i + 4];
 				if (call.OpCode.Code != Code.Call)
-					continue;
-				if (!DotNetUtils.IsPinvokeMethod(call.Operand as MethodDef, "kernel32", "VirtualProtect"))
 					continue;
 
 				return true;

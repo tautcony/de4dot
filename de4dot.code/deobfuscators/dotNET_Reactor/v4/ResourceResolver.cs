@@ -59,7 +59,10 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 					if (!DotNetUtils.IsMethod(method, "System.Reflection.Assembly", "(System.Object,System.ResolveEventArgs)") &&
 						!DotNetUtils.IsMethod(method, "System.Reflection.Assembly", "(System.Object,System.Object)"))
 						continue;
-					var initMethod = GetResourceDecrypterInitMethod(method, additionalTypes, false);
+					if (method.Body.ExceptionHandlers.Count != 0)
+						continue;
+					var initMethod = GetResourceDecrypterInitMethod(method, additionalTypes, true) ??
+					                 GetResourceDecrypterInitMethod(method, additionalTypes, false);
 					if (initMethod == null)
 						continue;
 
@@ -137,7 +140,8 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 						if (calledCtor == null)
 							continue;
 						if (!MethodEqualityComparer.CompareDeclaringTypes.Equals(calledCtor, ctor))
-							continue;
+							if (calledCtor.DeclaringType.FullName != "System.ResolveEventHandler") 
+								continue;
 						newobjUsed = true;
 					}
 				}
@@ -153,7 +157,18 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			if (encryptedResource.Resource == null)
 				return null;
 			DeobUtils.DecryptAndAddResources(module, encryptedResource.Resource.Name.String, () => {
-				return QuickLZ.Decompress(encryptedResource.Decrypt());
+
+				try {
+					return QuickLZ.Decompress(encryptedResource.Decrypt());
+				}
+				catch {
+					try {
+						return DeobUtils.Inflate(encryptedResource.Decrypt(), true);
+					}
+					catch {
+						return null;
+					}
+				}
 			});
 			return encryptedResource.Resource;
 		}

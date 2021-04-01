@@ -38,11 +38,17 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 		}
 
 		void Find() {
-			foreach (var type in module.Types) {
+			 foreach (var type in module.Types) {
 				var fields = type.Fields;
-				if (fields.Count != 1)
+				if (fields.Count == 0)
 					continue;
-				if (fields[0].FieldType.FullName != "System.ModuleHandle")
+				var hasModuleHandle = false;
+
+				foreach (var field in fields)
+					if (field.FieldType.FullName == "System.ModuleHandle")
+						hasModuleHandle = true;
+
+				if (!hasModuleHandle)
 					continue;
 				if (type.HasProperties || type.HasEvents)
 					continue;
@@ -67,7 +73,7 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 				this.typeMethod = typeMethod;
 				this.fieldMethod = fieldMethod;
 				return;
-			}
+			 }
 		}
 
 		public void Deobfuscate(Blocks blocks) {
