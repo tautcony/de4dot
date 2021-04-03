@@ -201,19 +201,21 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 					"System.String",
 					"System.Boolean",
 				};
+				var requiredTypes2 = new List<string> {
+					"System.Security.Cryptography.ICryptoTransform",
+					"System.IO.Stream",
+					"System.Int32",
+					"System.Byte[]",
+					"System.Boolean",
+				};
 				requiredTypes.AddRange(additionalTypes);
-				if (!localTypes.All(requiredTypes))
+				if (!localTypes.All(requiredTypes) && !localTypes.All(requiredTypes2))
 					return false;
 
 				if (DotNetUtils.GetMethod(method.DeclaringType, "System.Security.Cryptography.SymmetricAlgorithm", "()") != null) {
 					if (localTypes.Exists("System.UInt64") || (localTypes.Exists("System.UInt32") && !localTypes.Exists("System.Reflection.Assembly")))
 						return false;
 				}
-
-				if (!localTypes.Exists("System.Security.Cryptography.RijndaelManaged") &&
-					!localTypes.Exists("System.Security.Cryptography.AesManaged") &&
-					!localTypes.Exists("System.Security.Cryptography.SymmetricAlgorithm"))
-					return false;
 
 				return true;
 			}
