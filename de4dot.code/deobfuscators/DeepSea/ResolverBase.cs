@@ -82,9 +82,10 @@ namespace de4dot.code.deobfuscators.DeepSea {
 		}
 
 		bool CheckResolverInitMethodDesktop(MethodDef resolverInitMethod) {
-			simpleDeobfuscator.Deobfuscate(resolverInitMethod);
 			if (!CheckResolverInitMethodInternal(resolverInitMethod))
 				return false;
+
+			simpleDeobfuscator.Deobfuscate(resolverInitMethod);
 
 			foreach (var resolveHandlerMethod in GetLdftnMethods(resolverInitMethod)) {
 				if (!CheckHandlerMethodDesktop(resolveHandlerMethod))
