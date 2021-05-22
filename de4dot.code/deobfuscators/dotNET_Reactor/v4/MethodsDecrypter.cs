@@ -125,10 +125,17 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			XorEncrypt(methodsData);
 
 			var methodsDataReader = ByteArrayDataReaderFactory.CreateReader(methodsData);
+
+			int tmp = methodsDataReader.ReadInt32();
+			if ((tmp & 0xFF000000) == 0x06000000)
+				methodsDataReader.ReadInt32();
+			else
+				methodsDataReader.Position -= 4;
+
 			int patchCount = methodsDataReader.ReadInt32();
 			int mode = methodsDataReader.ReadInt32();
 
-			int tmp = methodsDataReader.ReadInt32();
+			tmp = methodsDataReader.ReadInt32();
 			methodsDataReader.Position -= 4;
 			if ((tmp & 0xFF000000) == 0x06000000) {
 				// It's method token + rva. DNR 3.7.0.3 (and earlier?) - 3.9.0.1
