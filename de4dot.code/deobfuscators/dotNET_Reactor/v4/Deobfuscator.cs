@@ -24,7 +24,6 @@ using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnlib.DotNet.Writer;
 using de4dot.blocks;
-using de4dot.blocks.cflow;
 
 namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 	public class DeobfuscatorInfo : DeobfuscatorInfoBase {
@@ -497,6 +496,10 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 
 			proxyCallFixer.Initialize();
 			proxyCallFixer.Find();
+
+			var cflowInliner = new CflowConstantsInliner(module, DeobfuscatedFile);
+			cflowInliner.InlineAllConstants();
+			AddTypeToBeRemoved(cflowInliner.Type, "Cflow constants type");
 
 			bool decryptStrings = Operations.DecryptStrings == OpDecryptString.Static;
 			if (decryptStrings)
