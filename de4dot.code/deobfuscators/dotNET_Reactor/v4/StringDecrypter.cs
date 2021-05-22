@@ -144,11 +144,11 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 			this.fileData = fileData;
 			try {
 				encryptedResource.Initialize(simpleDeobfuscator);
-		
-			if (!encryptedResource.FoundResource)
-				return;
-			Logger.v("Adding string decrypter. Resource: {0}", Utils.ToCsharpString(encryptedResource.Resource.Name));
-			decryptedData = encryptedResource.Decrypt();
+
+				if (!encryptedResource.FoundResource)
+					return;
+				Logger.v("Adding string decrypter. Resource: {0}", Utils.ToCsharpString(encryptedResource.Resource.Name));
+				decryptedData = encryptedResource.Decrypt();
 			}
 			catch {
 				encryptedResource.Method = null;

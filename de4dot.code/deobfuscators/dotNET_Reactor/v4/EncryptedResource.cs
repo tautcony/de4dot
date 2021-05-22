@@ -32,6 +32,7 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 		V1,
 		V2,
 		V3,
+		V4,
 	}
 
 	class EncryptedResource {
@@ -100,9 +101,11 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 				return DnrDecrypterType.V1;
 			else if (DecrypterV3.CouldBeResourceDecrypter(method, localTypes, additionalTypes))
 				return DnrDecrypterType.V3;
+			else if (DecrypterV4.CouldBeResourceDecrypter(method, localTypes, additionalTypes))
+				return DnrDecrypterType.V4;
 			else if (DecrypterV2.CouldBeResourceDecrypter(method, localTypes, additionalTypes))
 				return DnrDecrypterType.V2;
-		
+
 			return DnrDecrypterType.Unknown;
 		}
 
@@ -120,6 +123,9 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 
 			if (decrypterType == DnrDecrypterType.V3) {
 				decrypter = new DecrypterV3(resourceDecrypterMethod);
+			}
+			else if (decrypterType == DnrDecrypterType.V4) {
+				decrypter = new DecrypterV4(module, simpleDeobfuscator, resourceDecrypterMethod);
 			}
 			else {
 				var key = ArrayFinder.GetInitializedByteArray(resourceDecrypterMethod, 32);
@@ -732,6 +738,334 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 				Logger.e("Re-encryption is not supported. Assembly will probably crash at runtime.");
 				return (byte[])data.Clone();
 			}
+		}
+
+		class DecrypterV4 : IDecrypter {
+			readonly byte[] key, iv;
+			MethodDef decryptMethod;
+			MethodDef emuMethod;
+			List<Instruction> instructions;
+			List<Local> locals;
+			readonly InstructionEmulator instrEmulator = new InstructionEmulator();
+			Local emuLocal;
+
+			public DnrDecrypterType DecrypterType => DnrDecrypterType.V4;
+
+			public DecrypterV4(ModuleDefMD module, ISimpleDeobfuscator simpleDeobfuscator, MethodDef origMethod) {
+				if (!FindDecrypterMethod(origMethod))
+					throw new ApplicationException("Could not find decrypter method");
+				simpleDeobfuscator.Deobfuscate(decryptMethod);
+
+				if (!FindEmulateMethod(decryptMethod))
+					throw new ApplicationException("Could not find emulate method");
+				simpleDeobfuscator.Deobfuscate(emuMethod);
+
+				key = ArrayFinder.GetInitializedByteArray(decryptMethod, 32);
+				if (key == null)
+					throw new ApplicationException("Could not find resource decrypter key");
+				iv = ArrayFinder.GetInitializedByteArray(decryptMethod, 16);
+				if (iv == null)
+					throw new ApplicationException("Could not find resource decrypter IV");
+				if (NeedReverse())
+					Array.Reverse(iv);  // DNR 4.5.0.0
+				if (UsesPublicKeyToken()) {
+					var publicKeyToken = module.Assembly.PublicKeyToken;
+					if (publicKeyToken != null && publicKeyToken.Data.Length > 0) {
+						for (int i = 0; i < 8; i++)
+							iv[i * 2 + 1] = publicKeyToken.Data[i];
+					}
+				}
+
+				locals = new List<Local>(emuMethod.Body.Variables);
+				if (!Initialize())
+					throw new ApplicationException("Could not initialize decrypter");
+			}
+	
+			public static bool CouldBeResourceDecrypter(MethodDef method, LocalTypes localTypes, IList<string> additionalTypes) {
+				var requiredTypes = new List<string> {
+					"System.Int32",
+					"System.Byte[]",
+				};
+				requiredTypes.AddRange(additionalTypes);
+				if (!localTypes.All(requiredTypes))
+					return false;
+
+				var instrs = method.Body.Instructions;
+
+				foreach (var instr in instrs) {
+					if (instr.OpCode != OpCodes.Newobj)
+						continue;
+
+					if (instr.Operand is IMethod newObj 
+					    && newObj.FullName == "System.Void System.Diagnostics.StackFrame::.ctor(System.Int32)")
+						return true;
+				}
+
+				return false;
+			}
+
+			bool FindDecrypterMethod(MethodDef method) {
+				var instrs = method.Body.Instructions;
+				for (var i = 0; i < instrs.Count; i++) {
+					if (instrs[i].OpCode != OpCodes.Ldsfld)
+						continue;
+					if (instrs[i + 1].OpCode != OpCodes.Ldstr)
+						continue;
+					if (instrs[i + 2].OpCode != OpCodes.Callvirt)
+						continue;
+					if (instrs[i + 3].OpCode != OpCodes.Ldarg_0)
+						continue;
+					var call = instrs[i + 4];
+					if (call.OpCode != OpCodes.Call)
+						continue;
+
+					decryptMethod = call.Operand as MethodDef;
+					return true;
+				}
+
+				return false;
+			}
+
+			bool FindEmulateMethod(MethodDef method) {
+				var instrs = method.Body.Instructions;
+				for (var i = 0; i < instrs.Count; i++) {
+					if (instrs[i].OpCode != OpCodes.Newobj)
+						continue;
+					if (!instrs[i + 1].IsLdloc())
+						continue;
+					if (!instrs[i + 2].IsLdloc())
+						continue;
+					if (!instrs[i + 3].IsLdloc())
+						continue;
+					var call = instrs[i + 4];
+					if (call.OpCode != OpCodes.Call)
+						continue;
+
+					emuMethod = call.Operand as MethodDef;
+					return true;
+				}
+
+				return false;
+			}
+
+			bool Initialize() {
+				var origInstrs = emuMethod.Body.Instructions;
+
+				if (!Find(origInstrs, out int emuStartIndex, out int emuEndIndex, out emuLocal)) {
+					if (!FindStartEnd(origInstrs, out emuStartIndex, out emuEndIndex, out emuLocal))
+							return false;
+				}
+
+				for (int i = 0; i < iv.Length; i++)
+					key[i] ^= iv[i];
+
+				int count = emuEndIndex - emuStartIndex + 1;
+				instructions = new List<Instruction>(count);
+				for (int i = 0; i < count; i++)
+					instructions.Add(origInstrs[emuStartIndex + i].Clone());
+
+				return true;
+			}
+
+			bool Find(IList<Instruction> instrs, out int startIndex, out int endIndex, out Local tmpLocal) {
+				startIndex = 0;
+				endIndex = 0;
+				tmpLocal = null;
+
+				if (!FindStart(instrs, out int emuStartIndex, out emuLocal))
+					return false;
+				if (!FindEnd(instrs, emuStartIndex, out int emuEndIndex))
+					return false;
+				startIndex = emuStartIndex;
+				endIndex = emuEndIndex;
+				tmpLocal = emuLocal;
+				return true;
+			}
+
+			bool FindStartEnd(IList<Instruction> instrs, out int startIndex, out int endIndex, out Local tmpLocal) {
+				for (int i = 0; i + 8 < instrs.Count; i++) {
+					if (instrs[i].OpCode.Code != Code.Conv_R_Un)
+						continue;
+					if (instrs[i + 1].OpCode.Code != Code.Conv_R8)
+						continue;
+					if (instrs[i + 2].OpCode.Code != Code.Conv_U4)
+						continue;
+					if (instrs[i + 3].OpCode.Code != Code.Add)
+						continue;
+					int newEndIndex = i + 3;
+					int newStartIndex = -1;
+					for (int x = newEndIndex; x > 0; x--)
+						if (instrs[x].OpCode.FlowControl != FlowControl.Next) {
+							newStartIndex = x + 1;
+							break;
+						}
+					if (newStartIndex < 0)
+						continue;
+
+					var checkLocs = new List<Local>();
+					int ckStartIndex = -1;
+					for (int y = newEndIndex; y >= newStartIndex; y--) {
+						var loc = CheckLocal(instrs[y], true);
+						if (loc == null)
+							continue;
+						if (!checkLocs.Contains(loc))
+							checkLocs.Add(loc);
+						if (checkLocs.Count == 3)
+							break;
+						ckStartIndex = y;
+					}
+					endIndex = newEndIndex;
+					startIndex = Math.Max(ckStartIndex, newStartIndex);
+					tmpLocal = CheckLocal(instrs[startIndex], true);
+					return true;
+				}
+				endIndex = 0;
+				startIndex = 0;
+				tmpLocal = null;
+				return false;
+			}
+
+			bool FindStart(IList<Instruction> instrs, out int startIndex, out Local tmpLocal) {
+				for (int i = 0; i + 8 < instrs.Count; i++) {
+					if (instrs[i].OpCode.Code != Code.Conv_U)
+						continue;
+					if (instrs[i + 1].OpCode.Code != Code.Ldelem_U1)
+						continue;
+					if (instrs[i + 2].OpCode.Code != Code.Or)
+						continue;
+					if (CheckLocal(instrs[i + 3], false) == null)
+						continue;
+					Local local;
+					if ((local = CheckLocal(instrs[i + 4], true)) == null)
+						continue;
+					if (CheckLocal(instrs[i + 5], true) == null)
+						continue;
+					if (instrs[i + 6].OpCode.Code != Code.Add)
+						continue;
+					if (CheckLocal(instrs[i + 7], false) != local)
+						continue;
+					var instr = instrs[i + 8];
+					int newStartIndex = i + 8;
+					if (instr.IsBr()) {
+						instr = instr.Operand as Instruction;
+						newStartIndex = instrs.IndexOf(instr);
+					}
+					if (newStartIndex < 0 || instr == null)
+						continue;
+					if (CheckLocal(instr, true) != local)
+						continue;
+
+					startIndex = newStartIndex;
+					tmpLocal = local;
+					return true;
+				}
+
+				startIndex = 0;
+				tmpLocal = null;
+				return false;
+			}
+
+			bool FindEnd(IList<Instruction> instrs, int startIndex, out int endIndex) {
+				for (int i = startIndex; i < instrs.Count; i++) {
+					var instr = instrs[i];
+					if (instr.OpCode.FlowControl != FlowControl.Next)
+						break;
+					if (instr.IsStloc() && instr.GetLocal(locals) == emuLocal) {
+						endIndex = i - 1;
+						return true;
+					}
+				}
+
+				endIndex = 0;
+				return false;
+			}
+
+			Local CheckLocal(Instruction instr, bool isLdloc) {
+				if (isLdloc && !instr.IsLdloc())
+					return null;
+				else if (!isLdloc && !instr.IsStloc())
+					return null;
+
+				return instr.GetLocal(locals);
+			}
+
+			public byte[] Decrypt(EmbeddedResource resource) {
+				var encrypted = resource.CreateReader().ToArray();
+				var decrypted = new byte[encrypted.Length];
+
+				uint sum = 0;
+				for (int i = 0; i < encrypted.Length; i += 4) {
+					sum = CalculateMagic(sum + ReadUInt32(key, i % key.Length));
+					WriteUInt32(decrypted, i, sum ^ ReadUInt32(encrypted, i));
+				}
+
+				return decrypted;
+			}
+
+			uint CalculateMagic(uint input) {
+				instrEmulator.Initialize(emuMethod, emuMethod.Parameters, locals, emuMethod.Body.InitLocals, false);
+				instrEmulator.SetLocal(emuLocal, new Int32Value((int)input));
+
+				foreach (var instr in instructions)
+					instrEmulator.Emulate(instr);
+
+				var tos = instrEmulator.Pop() as Int32Value;
+				if (tos == null || !tos.AllBitsValid())
+					throw new ApplicationException("Couldn't calculate magic value");
+				return (uint)tos.Value;
+			}
+
+			static uint ReadUInt32(byte[] ary, int index) {
+				int sizeLeft = ary.Length - index;
+				if (sizeLeft >= 4)
+					return BitConverter.ToUInt32(ary, index);
+				switch (sizeLeft) {
+				case 1: return ary[index];
+				case 2: return (uint)(ary[index] | (ary[index + 1] << 8));
+				case 3: return (uint)(ary[index] | (ary[index + 1] << 8) | (ary[index + 2] << 16));
+				default: throw new ApplicationException("Can't read data");
+				}
+			}
+
+			static void WriteUInt32(byte[] ary, int index, uint value) {
+				int sizeLeft = ary.Length - index;
+				if (sizeLeft >= 1)
+					ary[index] = (byte)value;
+				if (sizeLeft >= 2)
+					ary[index + 1] = (byte)(value >> 8);
+				if (sizeLeft >= 3)
+					ary[index + 2] = (byte)(value >> 16);
+				if (sizeLeft >= 4)
+					ary[index + 3] = (byte)(value >> 24);
+			}
+
+			public byte[] Encrypt(byte[] data) {
+				//TODO: Support re-encryption
+				Logger.e("Re-encryption is not supported. Assembly will probably crash at runtime.");
+				return (byte[])data.Clone();
+			}
+
+			bool UsesPublicKeyToken() {
+				int pktIndex = 0;
+				foreach (var instr in decryptMethod.Body.Instructions) {
+					if (instr.OpCode.FlowControl != FlowControl.Next) {
+						pktIndex = 0;
+						continue;
+					}
+					if (!instr.IsLdcI4())
+						continue;
+					int val = instr.GetLdcI4Value();
+					if (val != pktIndexes[pktIndex++]) {
+						pktIndex = 0;
+						continue;
+					}
+					if (pktIndex >= pktIndexes.Length)
+						return true;
+				}
+				return false;
+			}
+
+			bool NeedReverse() => DotNetUtils.CallsMethodContains(decryptMethod, "System.Array::Reverse");
 		}
 
 		public byte[] Decrypt() {
