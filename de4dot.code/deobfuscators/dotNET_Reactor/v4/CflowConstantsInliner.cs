@@ -68,10 +68,11 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4
 							continue;
 						if (!instrs[i + 1].IsConditionalBranch())
 							continue;
-						if (instrs[i + 2].OpCode != OpCodes.Pop)
+						var popOrBr = instrs[i + 2];
+						if (popOrBr.OpCode != OpCodes.Pop && !popOrBr.IsBr())
 							continue;
 						var ldsfldValue = ldsfld.Operand as IField;
-						if (ldsfldValue ==  null)
+						if (ldsfldValue == null)
 							continue;
 						if (dictionary.TryGetValue(ldsfldValue, out var value))
 							instrs[i] = Instruction.CreateLdcI4(value);
