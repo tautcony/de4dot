@@ -45,7 +45,9 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4
 							}
 						}
 
-						Type = type;
+						if (dictionary.Count != 0)
+							Type = type;
+
 						return;
 					}
 				}
