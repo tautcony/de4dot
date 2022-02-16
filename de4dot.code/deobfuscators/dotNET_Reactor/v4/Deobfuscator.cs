@@ -153,7 +153,7 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 		public override void Initialize(ModuleDefMD module) => base.Initialize(module);
 
 		static Regex isRandomName = new Regex(@"^[A-Z]{30,40}$");
-		static Regex isRandomNameMembers = new Regex(@"^[a-zA-Z0-9]{9,11}$");	// methods, fields, props, events
+		static Regex isRandomNameMembers = new Regex(@"^(?:[a-zA-Z0-9]{9,11}|[a-zA-Z0-9]{18,20})$");	// methods, fields, props, events
 		static Regex isRandomNameTypes = new Regex(@"^[a-zA-Z0-9]{18,20}(?:`\d+)?$");	// types, namespaces
 
 		bool CheckValidName(string name, Regex regex) {
