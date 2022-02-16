@@ -14,7 +14,7 @@
     <Copyright>Copyright (C) 2011-2018 de4dot@gmail.com</Copyright>
     <OutputPath>$(MSBuildThisFileDirectory)\$(Configuration)</OutputPath>
 
-    <DnlibVersion>3.3.2</DnlibVersion>
+    <DnlibVersion>3.4.0</DnlibVersion>
   </PropertyGroup>
 
 </Project>
