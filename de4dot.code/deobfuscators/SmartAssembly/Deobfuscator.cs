@@ -19,6 +19,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using dnlib.DotNet;
 using de4dot.blocks;
 
@@ -312,7 +313,11 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 		void DumpEmbeddedAssemblies() {
 			assemblyResolver.ResolveResources();
 			foreach (var tuple in assemblyResolver.GetDecryptedResources()) {
-				DeobfuscatedFile.CreateAssemblyFile(tuple.Item2, tuple.Item1.simpleName, null);
+				try {
+					DeobfuscatedFile.CreateAssemblyFile(tuple.Item2, tuple.Item1.simpleName, null);
+				}
+				catch (IOException) {
+				}
 				AddResourceToBeRemoved(tuple.Item1.resource, $"Embedded assembly: {tuple.Item1.assemblyName}");
 			}
 		}
