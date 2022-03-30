@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using de4dot.blocks;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
@@ -25,6 +26,11 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 		void GetLocals() {
 			locals.Clear();
 
+			if (GetLocals1())
+				GetLocals2();
+		}
+
+		bool GetLocals1() {
 			var isFound = false;
 
 			foreach (var block in blocks.MethodBlocks.GetAllBlocks()) {
@@ -56,19 +62,81 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 				for (int i = 0; i < instrs.Count; i++) {
 					var instr = instrs[i];
 					if (IsStind(instr) || IsLdind(instr)) {
-						for (int j = 0; j < i; j++) {
-							var ldloc = instrs[j];
-							if (IsBaseLdlocal(ldloc)) {
-								var value = 0;
-								if (j + 2 < instrs.Count) {
-									var ldci4 = instrs[j + 1];
-									var add = instrs[j + 2];
-									if (ldci4.IsLdcI4() && add.OpCode.Code == Code.Add)
+						var pushes = DotNetUtils.GetArgPushes(instrs, i);
+						if (pushes?.Count > 0) {
+							var value = 0;
+							var ldloc = instr;
+
+							var ldlocOrAdd = pushes[0];
+							if (IsBaseLdlocal(ldlocOrAdd)) {
+								ldloc = ldlocOrAdd;
+							}
+							else if (ldlocOrAdd.OpCode.Code == Code.Add) {
+								var index = instrs.IndexOf(ldlocOrAdd);
+								if (index - 2 < instrs.Count) {
+									var ldci4 = instrs[index - 1];
+									ldloc = instrs[index - 2];
+									if (ldci4.IsLdcI4() && IsBaseLdlocal(ldloc))
 										value = ldci4.GetLdcI4Value();
 								}
+							}
 
+							if (IsBaseLdlocal(ldloc)) {
 								if (!locals.ContainsKey(value)) {
 									var local = new Local(GetTypeFromStLdInd(instr));
+									blocks.Locals.Add(local);
+									locals.Add(value, local);
+								}
+							}
+						}
+					}
+				}
+			}
+
+			return isFound;
+		}
+
+		void GetLocals2() {
+			foreach (var block in blocks.MethodBlocks.GetAllBlocks()) {
+				var instrs = block.Instructions;
+
+				for (int i = 0; i < instrs.Count; i++) {
+					var instr = instrs[i];
+					if (IsCallOrNewobj(instr)) {
+						var method = instr.Operand as IMethod;
+						if (method == null)
+							continue;
+						if (!method.MethodSig.Params.Any(x => x.IsByRef))
+							continue;
+
+						var pushes = DotNetUtils.GetArgPushes(instrs, i);
+						if (pushes == null)
+							continue;
+						if (pushes.Count == 0)
+							continue;
+						if (!pushes.Any(x => x.Instruction.OpCode.Code == Code.Add || IsBaseLdlocal(x)))
+							continue;
+
+						var args = DotNetUtils.GetArgs(method);
+						for (var j = 0; j < pushes.Count; j++) {
+							var value = 0;
+
+							var arg = args[j];
+							var ldloc = pushes[j];
+
+							if (ldloc.OpCode.Code == Code.Add) {
+								var index = instrs.IndexOf(ldloc);
+								if (index - 2 < instrs.Count) {
+									var ldci4 = instrs[index - 1];
+									ldloc = instrs[index - 2];
+									if (ldci4.IsLdcI4() && IsBaseLdlocal(ldloc))
+										value = ldci4.GetLdcI4Value();
+								}
+							}
+
+							if (IsBaseLdlocal(ldloc)) {
+								if (!locals.ContainsKey(value)) {
+									var local = new Local(arg.ScopeType.ToTypeSig());
 									blocks.Locals.Add(local);
 									locals.Add(value, local);
 								}
@@ -81,70 +149,110 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 
 		void Deobfuscate() {
 			foreach (var block in blocks.MethodBlocks.GetAllBlocks()) {
-				var instrs = block.Instructions;
-				for (int i = 0; i < instrs.Count; i++) {
-					var ldloc = instrs[i];
-					if (IsBaseLdlocal(ldloc))
-						Deobfuscate1(ldloc, i, instrs);
+				Deobfuscate1(block);
+				Deobfuscate2(block);
+				Deobfuscate3(block);
+			}
+		}
+
+		void Deobfuscate1(Block block) {
+			var instrs = block.Instructions;
+
+			for (int i = 0; i < instrs.Count; i++) {
+				var instr = instrs[i];
+				if (IsStind(instr) || IsLdind(instr)) {
+					var pushes = DotNetUtils.GetArgPushes(instrs, i);
+					if (pushes?.Count > 0) {
+						var value = 0;
+
+						var ldloc = instr;
+						var add = pushes[0];
+						if (IsBaseLdlocal(add)) {
+							ldloc = add;
+						}
+						else if (add.OpCode.Code == Code.Add) {
+							var index = instrs.IndexOf(add);
+							if (index - 2 < instrs.Count) {
+								var ldci4 = instrs[index - 1];
+								ldloc = instrs[index - 2];
+								if (ldci4.IsLdcI4() && IsBaseLdlocal(ldloc)) {
+									value = ldci4.GetLdcI4Value();
+
+									ldci4.Instruction.OpCode = OpCodes.Nop;
+									add.Instruction.OpCode = OpCodes.Nop;
+								}
+							}
+						}
+
+						if (IsBaseLdlocal(ldloc)) {
+							ldloc.Instruction.OpCode = OpCodes.Nop;
+
+							if (IsStind(instr))
+								instr.Instruction.OpCode = OpCodes.Stloc;
+							else if (IsLdind(instr))
+								instr.Instruction.OpCode = OpCodes.Ldloc;
+
+							instr.Instruction.Operand = locals[value];
+						}
+					}
 				}
 			}
 		}
 
-		void Deobfuscate1(Instr ldloc, int i, IList<Instr> instrs) {
-			var value = 0;
+		void Deobfuscate2(Block block) {
+			var instrs = block.Instructions;
 
-			if (i + 2 < instrs.Count) {
-				var ldci4 = instrs[i + 1];
-				var add = instrs[i + 2];
-				if (ldci4.IsLdcI4() && add.OpCode.Code == Code.Add) {
-					value = ldci4.GetLdcI4Value();
+			for (int i = 0; i < instrs.Count; i++) {
+				var ldloc = instrs[i];
+				if (IsBaseLdlocal(ldloc)) {
+					var value = 0;
 
-					ldci4.Instruction.OpCode = OpCodes.Nop;
-					add.Instruction.OpCode = OpCodes.Nop;
-				}
-			}
+					if (i + 2 < instrs.Count) {
+						var ldci4 = instrs[i + 1];
+						var add = instrs[i + 2];
+						if (ldci4.IsLdcI4() && add.OpCode.Code == Code.Add) {
+							value = ldci4.GetLdcI4Value();
 
-			var isFoundLd = false;
-			var isFoundSt = false;
+							ldci4.Instruction.OpCode = OpCodes.Nop;
+							add.Instruction.OpCode = OpCodes.Nop;
+						}
+					}
 
-			for (int j = i + 1; j < instrs.Count; j++) {
-				var instr = instrs[j];
-				if (IsStind(instr) || IsLdind(instr)) {
-					ldloc.Instruction.OpCode = OpCodes.Nop;
-
-					if (IsStind(instr))
-						instr.Instruction.OpCode = OpCodes.Stloc;
-					else if (IsLdind(instr))
-						instr.Instruction.OpCode = OpCodes.Ldloc;
-
-					instr.Instruction.Operand = locals[value];
-					return;
-				}
-
-				if (IsBaseLdlocal(instr)) {
-					ldloc.Instruction.OpCode = OpCodes.Ldloca;
+					ldloc.Instruction.OpCode = OpCodes.Ldloc;
 					ldloc.Instruction.Operand = locals[value];
-					return;
 				}
-
-				if (instr.OpCode.Name.StartsWith("ld"))
-					isFoundLd = true;
-
-				if (instr.OpCode.Name.StartsWith("st"))
-					isFoundSt = true;
-
-				if (isFoundLd && isFoundSt)
-					break;
 			}
+		}
 
-			if (!locals.ContainsKey(value)) {
-				var local = new Local(module.CorLibTypes.Int32);
-				blocks.Locals.Add(local);
-				locals.Add(value, local);
+		void Deobfuscate3(Block block) {
+			var instrs = block.Instructions;
+
+			for (int i = 0; i < instrs.Count; i++) {
+				var instr = instrs[i];
+				if (IsCallOrNewobj(instr)) {
+					var method = instr.Operand as IMethod;
+					if (method == null)
+						continue;
+
+					var pushes = DotNetUtils.GetArgPushes(instrs, i);
+					if (pushes == null)
+						continue;
+					if (pushes.Count == 0)
+						continue;
+
+					var args = DotNetUtils.GetArgs(method);
+					for (var j = 0; j < pushes.Count; j++) {
+						var arg = args[j];
+						if (!arg.IsByRef && !method.DeclaringType.IsValueType)
+							continue;
+						if (!pushes[j].IsLdloc())
+							continue;
+						var local = pushes[j].Instruction.GetLocal(blocks.Locals);
+						pushes[j].Instruction.OpCode = OpCodes.Ldloca;
+						pushes[j].Instruction.Operand = local;
+					}
+				}
 			}
-
-			ldloc.Instruction.OpCode = OpCodes.Ldloc;
-			ldloc.Instruction.Operand = locals[value];
 		}
 
 		CorLibTypeSig GetTypeFromStLdInd(Instr instr) {
@@ -202,6 +310,8 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 		}
 
 		bool IsBaseLdlocal(Instr instr) => instr.IsLdloc() && instr.Instruction.GetLocal(blocks.Locals) == baseLocal;
+
+		bool IsCallOrNewobj(Instr instr) => instr.OpCode.Code == Code.Call || instr.OpCode.Code == Code.Callvirt || instr.OpCode.Code == Code.Newobj;
 
 		bool IsStind(Instr instr) {
 			switch (instr.OpCode.Code) {
