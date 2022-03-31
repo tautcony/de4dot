@@ -218,7 +218,7 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 						}
 					}
 
-					ldloc.Instruction.OpCode = OpCodes.Ldloc;
+					ldloc.Instruction.OpCode = OpCodes.Ldloca;
 					ldloc.Instruction.Operand = locals[value];
 				}
 			}
@@ -243,11 +243,13 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 					var args = DotNetUtils.GetArgs(method);
 					for (var j = 0; j < pushes.Count; j++) {
 						var arg = args[j];
-						if (!arg.IsByRef && !method.DeclaringType.IsValueType)
+						if (!arg.IsByRef)
 							continue;
 						if (!pushes[j].IsLdloc())
 							continue;
 						var local = pushes[j].Instruction.GetLocal(blocks.Locals);
+						if (!locals.ContainsValue(local)) 
+							continue;
 						pushes[j].Instruction.OpCode = OpCodes.Ldloca;
 						pushes[j].Instruction.Operand = local;
 					}
