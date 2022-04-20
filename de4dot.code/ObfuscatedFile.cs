@@ -757,6 +757,7 @@ namespace de4dot.code {
 				var cflowDeobfuscator = new BlocksCflowDeobfuscator(deob.BlocksDeobfuscators, disableNewCFCode);
 				cflowDeobfuscator.Initialize(blocks);
 				cflowDeobfuscator.Deobfuscate();
+				blocks.RepartitionBlocks();
 			});
 		}
 
