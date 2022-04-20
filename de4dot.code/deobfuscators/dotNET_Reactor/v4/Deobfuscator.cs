@@ -496,6 +496,7 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 
 			proxyCallFixer.Initialize();
 			proxyCallFixer.Find();
+			proxyCallFixer.DeobfuscateAll();
 
 			var cflowInliner = new CflowConstantsInliner(module, DeobfuscatedFile);
 			cflowInliner.InlineAllConstants();
