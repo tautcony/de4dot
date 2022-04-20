@@ -23,7 +23,7 @@ namespace de4dot.code.deobfuscators.Obfuscar {
 	public class DeobfuscatorInfo : DeobfuscatorInfoBase {
 		public const string THE_NAME = "Obfuscar";
 		public const string THE_TYPE = "ob";
-		const string DEFAULT_REGEX = @"^[\u2E80-\u9FFFa-zA-Z_<{$]{3,}[\u2E80-\u9FFFa-zA-Z_0-9<>{}$.`-]*$";
+		const string DEFAULT_REGEX = @"^[\u2E80-\u9FFFa-zA-Z_<{$][\u2E80-\u9FFFa-zA-Z_0-9<>{}$.`-]{1,}$";
 
 		public DeobfuscatorInfo()
 			: base(DEFAULT_REGEX) {
