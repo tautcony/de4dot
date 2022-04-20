@@ -24,6 +24,7 @@ using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using dnlib.DotNet.Writer;
 using de4dot.blocks;
+using de4dot.blocks.cflow;
 
 namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 	public class DeobfuscatorInfo : DeobfuscatorInfoBase {
@@ -127,6 +128,17 @@ namespace de4dot.code.deobfuscators.dotNET_Reactor.v4 {
 		public override string TypeLong => DeobfuscatorInfo.THE_NAME + " 4.x";
 		public override string Name => obfuscatorName;
 		protected override bool CanInlineMethods => startedDeobfuscating ? options.InlineMethods : true;
+
+		public override IEnumerable<IBlocksDeobfuscator> BlocksDeobfuscators {
+			get {
+				var list = new List<IBlocksDeobfuscator>();
+				if (CanInlineMethods) {
+					list.Add(new DotNetReactorCflowDeobfuscator());
+					list.Add(new MethodCallInliner(false));
+				}
+				return list;
+			}
+		}
 
 		public Deobfuscator(Options options)
 			: base(options) {
