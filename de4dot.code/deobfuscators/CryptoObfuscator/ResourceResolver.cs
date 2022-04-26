@@ -85,6 +85,7 @@ namespace de4dot.code.deobfuscators.CryptoObfuscator {
 			case ResolverVersion.V2:
 				names.Add($"{module.Assembly.Name.String}{module.Assembly.Name.String}{module.Assembly.Name.String}");
 				names.Add($"{module.Assembly.Name.String}&");
+				names.Add($"{module.Assembly.Name.String}&&");
 				break;
 
 			default:
