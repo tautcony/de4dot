@@ -19,7 +19,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using dnlib.DotNet;
 using dnlib.DotNet.Emit;
 using de4dot.blocks;
@@ -301,7 +300,7 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 				return true;
 
 			var methods = new List<MethodDef>(DotNetUtils.FindMethods(stringsEncodingClass.Methods, "System.String", new string[] { "System.Int32" }));
-			if (methods.Count != 1)
+			if (methods.Count == 0)
 				return false;
 
 			stringDecrypterMethod = methods[0];
