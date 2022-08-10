@@ -126,12 +126,12 @@ namespace de4dot.code.deobfuscators.SmartAssembly {
 
 							if (ldloc.OpCode.Code == Code.Add) {
 								var index = instrs.IndexOf(ldloc);
-								if (index - 2 < instrs.Count) {
-									var ldci4 = instrs[index - 1];
-									ldloc = instrs[index - 2];
-									if (ldci4.IsLdcI4() && IsBaseLdlocal(ldloc))
-										value = ldci4.GetLdcI4Value();
-								}
+								if (index < 2)
+									continue;
+								var ldci4 = instrs[index - 1];
+								ldloc = instrs[index - 2];
+								if (ldci4.IsLdcI4() && IsBaseLdlocal(ldloc))
+									value = ldci4.GetLdcI4Value();
 							}
 
 							if (IsBaseLdlocal(ldloc)) {
