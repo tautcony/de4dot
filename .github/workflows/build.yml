@@ -8,7 +8,7 @@ on:
 jobs:
   build-dotnet-core:
     name: Build .Net Core
-    runs-on: linux-latest
+    runs-on: ubuntu-latest
 
     strategy:
       matrix:
