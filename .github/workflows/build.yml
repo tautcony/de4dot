@@ -17,20 +17,20 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup .NET Core SDK
-        uses: actions/setup-dotnet@v3
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '6.x'
+          dotnet-version: '8.x'
 
       - name: Publish the application
-        run: dotnet publish de4dot --configuration ${{ matrix.configuration }} -f net6.0 --runtime ${{ matrix.runtime-identifier }} --self-contained false -p:PublishSingleFile=true
+        run: dotnet publish de4dot --configuration ${{ matrix.configuration }} -f net8.0 --runtime ${{ matrix.runtime-identifier }} --self-contained false -p:PublishSingleFile=true
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: de4dot-net6.0-${{ matrix.runtime-identifier }}
+          name: de4dot-net8.0-${{ matrix.runtime-identifier }}
           path: |
-            ${{ matrix.configuration }}/net6.0/${{ matrix.runtime-identifier }}/publish/
-            !${{ matrix.configuration }}/net6.0/${{ matrix.runtime-identifier }}/publish/*.pdb
+            ${{ matrix.configuration }}/net8.0/${{ matrix.runtime-identifier }}/publish/
+            !${{ matrix.configuration }}/net8.0/${{ matrix.runtime-identifier }}/publish/*.pdb
